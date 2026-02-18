@@ -1,0 +1,8 @@
+{
+  "name": "mailman",
+  "version": "0.1.0",
+  "description": "Manage Mailman 2 mailing lists via SSH — add/remove members, list membership, change settings, and more.",
+  "author": {
+    "name": "Walt Rice"
+  }
+}
