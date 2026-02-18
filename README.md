@@ -1,4 +1,4 @@
-# mailman2-admin
+# mailman
 
 A Claude Code plugin for managing Mailman 2 mailing lists via SSH.
 
