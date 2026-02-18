@@ -10,7 +10,7 @@ Provide guidance and execute Mailman 2 mailing list management operations via SS
 
 ## Configuration
 
-Read server configuration from `.claude/mailman2-admin.local.md` in the project directory. The YAML frontmatter contains:
+Read server configuration from `.claude/mailman.local.md` in the project directory. The YAML frontmatter contains:
 
 ```yaml
 default_server: my-server

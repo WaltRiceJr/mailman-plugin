@@ -15,11 +15,11 @@ Interpret the user's natural language request and execute the appropriate Mailma
 
 ## Step 1: Load Configuration
 
-Read the settings file at `.claude/mailman2-admin.local.md` to get server configuration.
+Read the settings file at `.claude/mailman.local.md` to get server configuration.
 
 If the file does not exist:
 1. Read the template from `${CLAUDE_PLUGIN_ROOT}/settings-template.md`
-2. Show the user the template and explain they need to create `.claude/mailman2-admin.local.md` in their project
+2. Show the user the template and explain they need to create `.claude/mailman.local.md` in their project
 3. Stop and wait for the user to create the file
 
 Parse the YAML frontmatter to extract:

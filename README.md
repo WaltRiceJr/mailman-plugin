@@ -22,12 +22,12 @@ A Claude Code plugin for managing Mailman 2 mailing lists via SSH.
 ## Installation
 
 ```bash
-claude --plugin-dir /path/to/mailman2-admin
+claude --plugin-dir /path/to/mailman-plugin
 ```
 
 ## Configuration
 
-Create `.claude/mailman2-admin.local.md` in your project directory:
+Create `.claude/mailman.local.md` in your project directory:
 
 ```markdown
 ---
