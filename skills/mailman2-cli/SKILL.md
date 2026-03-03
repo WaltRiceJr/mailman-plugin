@@ -1,6 +1,6 @@
 ---
 name: mailman2-cli
-description: This skill should be used when the user asks to "manage mailing lists", "add member to list", "subscribe someone to a list", "remove member from list", "unsubscribe someone from a list", "list members", "who is on a list", "find user on lists", "show all mailing lists", "sync list membership", "change member settings", "set digest mode", "set nomail", "bulk add members", "clone list membership", "mailman administration", or mentions Mailman 2 CLI utilities, mailing list administration, email list management, or running mailman commands via SSH on a remote server.
+description: This skill should be used when the user asks to "manage mailing lists", "add member to list", "subscribe someone to a list", "remove member from list", "unsubscribe someone from a list", "list members", "who is on a list", "find user on lists", "show all mailing lists", "sync list membership", "change member settings", "set digest mode", "set nomail", "bulk add members", "clone list membership", "rename list", "duplicate list", "copy list", "mailman administration", or mentions Mailman 2 CLI utilities, mailing list administration, email list management, or running mailman commands via SSH on a remote server.
 version: 0.1.0
 ---
 
@@ -179,6 +179,127 @@ Not a built-in utility. To replicate membership from one list to another:
 ssh ALIAS MAILMAN_BIN/list_members SRCLIST | ssh ALIAS MAILMAN_BIN/add_members -r - -w n -a n DESTLIST
 ```
 
+### newlist — Create a New List
+
+```bash
+ssh ALIAS sudo MAILMAN_BIN/newlist -q --urlhost=DOMAIN --emailhost=DOMAIN LISTNAME ADMIN_EMAIL PASSWORD
+```
+
+Key flags:
+- `-q` — quiet mode (suppress alias output to stdout)
+- `--urlhost=DOMAIN` — set the list's web host (e.g., `lists.example.com`)
+- `--emailhost=DOMAIN` — set the list's email domain (e.g., `lists.example.com`)
+
+**Important:** After creating a list, the Mailman alias entries must be added to `/etc/aliases` and `sudo newaliases` must be run. The alias lines follow this pattern:
+
+```
+## LISTNAME mailing list
+LISTNAME:              "|MAILMAN_BIN/../mail/mailman post LISTNAME"
+LISTNAME-admin:        "|MAILMAN_BIN/../mail/mailman admin LISTNAME"
+LISTNAME-bounces:      "|MAILMAN_BIN/../mail/mailman bounces LISTNAME"
+LISTNAME-confirm:      "|MAILMAN_BIN/../mail/mailman confirm LISTNAME"
+LISTNAME-join:         "|MAILMAN_BIN/../mail/mailman join LISTNAME"
+LISTNAME-leave:        "|MAILMAN_BIN/../mail/mailman leave LISTNAME"
+LISTNAME-owner:        "|MAILMAN_BIN/../mail/mailman owner LISTNAME"
+LISTNAME-request:      "|MAILMAN_BIN/../mail/mailman request LISTNAME"
+LISTNAME-subscribe:    "|MAILMAN_BIN/../mail/mailman subscribe LISTNAME"
+LISTNAME-unsubscribe:  "|MAILMAN_BIN/../mail/mailman unsubscribe LISTNAME"
+```
+
+### config_list — Export/Import List Configuration
+
+Export configuration to a file:
+
+```bash
+ssh ALIAS MAILMAN_BIN/config_list -o /tmp/LISTNAME.cfg LISTNAME
+```
+
+Import configuration from a file:
+
+```bash
+ssh ALIAS MAILMAN_BIN/config_list -i /tmp/LISTNAME.cfg LISTNAME
+```
+
+**Note:** `config_list` exports/imports list-level settings (posting policy, moderation defaults, subject prefix, etc.). Per-member settings stored in the list pickle (individual nomail flags, per-member moderation flags) are NOT preserved by config export/import.
+
+### rmlist — Delete a List
+
+**DESTRUCTIVE: Always confirm with user before executing.**
+
+```bash
+ssh ALIAS sudo MAILMAN_BIN/rmlist LISTNAME
+```
+
+Key flags:
+- `--archives` — also delete the list's archive files
+
+Without `--archives`, the mbox and HTML archives are preserved on disk.
+
+### arch — Regenerate HTML Archives
+
+Rebuild a list's HTML archives from its mbox file:
+
+```bash
+ssh ALIAS MAILMAN_BIN/arch --wipe LISTNAME
+```
+
+Key flags:
+- `--wipe` — clear existing HTML archives and regenerate from scratch
+
+## Compound Operations
+
+### duplicate_list — Copy a List (Without Removing Original)
+
+This is not a built-in Mailman command. It is a multi-step procedure:
+
+1. **Create new list:**
+   ```bash
+   ssh ALIAS sudo MAILMAN_BIN/newlist -q --urlhost=DOMAIN --emailhost=DOMAIN DESTLIST ADMIN_EMAIL PASSWORD
+   ```
+2. **Add aliases** for the new list to `/etc/aliases` and run `sudo newaliases`
+3. **Export config from source list:**
+   ```bash
+   ssh ALIAS MAILMAN_BIN/config_list -o /tmp/SRCLIST.cfg SRCLIST
+   ```
+4. **Import config into destination list:**
+   ```bash
+   ssh ALIAS MAILMAN_BIN/config_list -i /tmp/SRCLIST.cfg DESTLIST
+   ```
+5. **Copy regular members:**
+   ```bash
+   ssh ALIAS "MAILMAN_BIN/list_members --regular SRCLIST | MAILMAN_BIN/add_members -r - -w n -a n DESTLIST"
+   ```
+6. **Copy digest members:**
+   ```bash
+   ssh ALIAS "MAILMAN_BIN/list_members --digest SRCLIST | MAILMAN_BIN/add_members -d - -w n -a n DESTLIST"
+   ```
+7. **Copy archive mbox:**
+   ```bash
+   ssh ALIAS sudo cp /var/lib/mailman/archives/private/SRCLIST.mbox/SRCLIST.mbox /var/lib/mailman/archives/private/DESTLIST.mbox/DESTLIST.mbox
+   ```
+8. **Regenerate HTML archives:**
+   ```bash
+   ssh ALIAS MAILMAN_BIN/arch --wipe DESTLIST
+   ```
+9. **Verify member counts match:**
+   ```bash
+   ssh ALIAS MAILMAN_BIN/list_members SRCLIST | wc -l
+   ssh ALIAS MAILMAN_BIN/list_members DESTLIST | wc -l
+   ```
+
+### rename_list — Rename a List (Duplicate + Delete Original)
+
+Same as `duplicate_list` (steps 1–9 above), plus:
+
+10. **Delete original list** (only after verification succeeds):
+    ```bash
+    ssh ALIAS sudo MAILMAN_BIN/rmlist SRCLIST
+    ```
+
+**Note:** Archives of the old list are preserved on disk unless `--archives` is passed to `rmlist`. It is recommended to leave old archives in place as a safety net.
+
+**Known limitation:** Per-member settings (individual nomail, moderation flags) stored in the list pickle are NOT preserved by `config_list` export/import. These must be re-applied manually after the rename if needed.
+
 ## Safety Rules
 
 1. **Always confirm before executing:** `remove_members`, `sync_members`, `--all` flags
@@ -186,6 +307,8 @@ ssh ALIAS MAILMAN_BIN/list_members SRCLIST | ssh ALIAS MAILMAN_BIN/add_members -
 3. **For batch operations**, show the count and a sample of addresses before proceeding
 4. **Never run** `remove_members --all` without explicit user confirmation
 5. **For sync_members**, show who will be added AND removed before executing
+6. **For duplicate_list**, confirm the source list, destination name, and admin email before proceeding
+7. **For rename_list**, require the user to explicitly confirm with YES before executing — this is a highly destructive operation that deletes the original list
 
 ## List Name Resolution
 

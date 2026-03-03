@@ -10,6 +10,7 @@ A Claude Code plugin for managing Mailman 2 mailing lists via SSH.
 - Find which lists a user belongs to
 - Sync list membership (bulk add/remove)
 - Change member settings (digest, nomail, moderation, hide, etc.)
+- Duplicate/rename lists (with config, members, and archive preservation)
 - Multi-server support via config file
 - Confirmation prompts for destructive operations
 
@@ -59,6 +60,8 @@ Add multiple servers by adding entries under `servers:`.
 /mailman set nomail for user@example.com on announce
 /mailman set digest mode for user@example.com on announce
 /mailman show settings for user@example.com on announce
+/mailman duplicate OldList as NewList
+/mailman rename OldList to NewList
 ```
 
 Or just `/mailman` with no arguments to describe what you need interactively.

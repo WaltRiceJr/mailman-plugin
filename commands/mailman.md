@@ -1,5 +1,5 @@
 ---
-description: Manage Mailman 2 mailing lists (add/remove members, list membership, change settings)
+description: Manage Mailman 2 mailing lists (add/remove members, list membership, change settings, duplicate/rename lists)
 argument-hint: [natural language request, e.g. "add user@example.com to announce"]
 allowed-tools:
   - Read
@@ -41,6 +41,8 @@ Determine the operation from the request:
 - **"sync"** → sync_members (CONFIRM FIRST)
 - **"set" / "change" / "enable" / "disable" + setting name** → member settings change
 - **"status" / "info" / "details"** → query member settings
+- **"duplicate" / "copy list" / "clone list"** → duplicate_list (CONFIRM FIRST)
+- **"rename" / "rename list"** → rename_list (CONFIRM FIRST — HIGHLY DESTRUCTIVE)
 
 If the request is ambiguous, ask the user to clarify using AskUserQuestion.
 
@@ -69,6 +71,30 @@ Build and run the appropriate SSH command using the mailman2-cli skill for corre
 
 **For remove operations:**
 - Default to `-n -N` (no goodbye message, no admin notification) unless the user requests otherwise
+
+**For duplicate operations:**
+1. Verify the destination list does not already exist (run `list_lists -b` and check)
+2. Ask the user for the admin email, a temporary password, and the email domain for the new list (use `default_domain` from config as default, confirm with user)
+3. Show a summary: source list, destination name, admin email, domain. Warn that per-member settings (individual nomail flags, per-member moderation) are NOT preserved and must be re-applied manually if needed
+4. Use AskUserQuestion to confirm before proceeding
+5. Execute the full `duplicate_list` procedure from the skill reference:
+   - Create new list via `newlist -q` with `--urlhost=DOMAIN` to set the list's web host and `--emailhost=DOMAIN` to set the list's email domain
+   - Add aliases to `/etc/aliases` and run `sudo newaliases`
+   - Export source config via `config_list -o`, import into destination via `config_list -i`
+   - Copy regular members (`list_members --regular SRC | add_members -r - DEST`)
+   - Copy digest members (`list_members --digest SRC | add_members -d - DEST`)
+   - Copy archive mbox from `/var/lib/mailman/archives/private/SRCLIST.mbox/SRCLIST.mbox` to `/var/lib/mailman/archives/private/DESTLIST.mbox/DESTLIST.mbox`
+   - Regenerate HTML archives via `arch --wipe DESTLIST`
+   - Verify member counts match between source and destination
+
+**For rename operations:**
+1. Verify the destination list does not already exist (run `list_lists -b` and check)
+2. Ask the user for the admin email, a temporary password, and the email domain for the new list (use `default_domain` from config as default, confirm with user)
+3. Show a summary: source list, destination name, admin email, domain. Warn that the original list will be deleted and that per-member settings (individual nomail flags, per-member moderation) are NOT preserved
+4. Use AskUserQuestion with an explicit YES confirmation — this is highly destructive
+5. Execute the full `duplicate_list` procedure (steps above)
+6. After verification succeeds (member counts match), delete the original list via `rmlist` (without `--archives` to preserve old archives as a safety net)
+7. Confirm deletion succeeded and show final status
 
 ## Step 5: Report Results
 
