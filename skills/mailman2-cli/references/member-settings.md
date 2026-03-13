@@ -237,6 +237,27 @@ for k, v in opts.items():
 '"
 ```
 
+## Multiple Settings for One Member (Single Connection)
+
+When changing multiple settings for the same member, combine them in one Python script to avoid multiple SSH connections:
+
+```bash
+ssh ALIAS "python -c '
+import paths
+from Mailman import mm_cfg, MailList
+from Mailman.MemberAdaptor import BYADMIN
+
+m = MailList.MailList(\"LISTNAME\", lock=True)
+try:
+    m.setMemberOption(\"user@example.com\", mm_cfg.Digests, 1)
+    m.setMemberOption(\"user@example.com\", mm_cfg.ConcealSubscription, 1)
+    m.setDeliveryStatus(\"user@example.com\", BYADMIN)
+    m.Save()
+finally:
+    m.Unlock()
+'"
+```
+
 ## Bulk Setting Changes
 
 ### Set Option for All Members

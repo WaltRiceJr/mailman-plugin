@@ -173,10 +173,10 @@ Flags:
 
 ### clone_member — Copy Settings Between Lists
 
-Not a built-in utility. To replicate membership from one list to another:
+Not a built-in utility. To replicate membership from one list to another (single SSH connection):
 
 ```bash
-ssh ALIAS MAILMAN_BIN/list_members SRCLIST | ssh ALIAS MAILMAN_BIN/add_members -r - -w n -a n DESTLIST
+ssh ALIAS "MAILMAN_BIN/list_members SRCLIST | MAILMAN_BIN/add_members -r - -w n -a n DESTLIST"
 ```
 
 ### newlist — Create a New List
@@ -250,48 +250,35 @@ Key flags:
 
 ### duplicate_list — Copy a List (Without Removing Original)
 
-This is not a built-in Mailman command. It is a multi-step procedure:
+This is not a built-in Mailman command. It is a multi-step procedure. Steps are batched to minimize SSH connections (4 connections total instead of ~9).
 
 1. **Create new list:**
    ```bash
    ssh ALIAS sudo MAILMAN_BIN/newlist -q --urlhost=DOMAIN --emailhost=DOMAIN DESTLIST ADMIN_EMAIL PASSWORD
    ```
 2. **Add aliases** for the new list to `/etc/aliases` and run `sudo newaliases`
-3. **Export config from source list:**
+3. **Export and import config** (single connection):
    ```bash
-   ssh ALIAS MAILMAN_BIN/config_list -o /tmp/SRCLIST.cfg SRCLIST
+   ssh ALIAS "MAILMAN_BIN/config_list -o /tmp/SRCLIST.cfg SRCLIST && MAILMAN_BIN/config_list -i /tmp/SRCLIST.cfg DESTLIST"
    ```
-4. **Import config into destination list:**
+4. **Copy all members — regular and digest** (single connection):
    ```bash
-   ssh ALIAS MAILMAN_BIN/config_list -i /tmp/SRCLIST.cfg DESTLIST
+   ssh ALIAS "MAILMAN_BIN/list_members --regular SRCLIST | MAILMAN_BIN/add_members -r - -w n -a n DESTLIST && MAILMAN_BIN/list_members --digest SRCLIST | MAILMAN_BIN/add_members -d - -w n -a n DESTLIST"
    ```
-5. **Copy regular members:**
+5. **Copy archive mbox and regenerate HTML archives** (single connection):
    ```bash
-   ssh ALIAS "MAILMAN_BIN/list_members --regular SRCLIST | MAILMAN_BIN/add_members -r - -w n -a n DESTLIST"
+   ssh ALIAS "sudo cp /var/lib/mailman/archives/private/SRCLIST.mbox/SRCLIST.mbox /var/lib/mailman/archives/private/DESTLIST.mbox/DESTLIST.mbox && MAILMAN_BIN/arch --wipe DESTLIST"
    ```
-6. **Copy digest members:**
+6. **Verify member counts match** (single connection):
    ```bash
-   ssh ALIAS "MAILMAN_BIN/list_members --digest SRCLIST | MAILMAN_BIN/add_members -d - -w n -a n DESTLIST"
-   ```
-7. **Copy archive mbox:**
-   ```bash
-   ssh ALIAS sudo cp /var/lib/mailman/archives/private/SRCLIST.mbox/SRCLIST.mbox /var/lib/mailman/archives/private/DESTLIST.mbox/DESTLIST.mbox
-   ```
-8. **Regenerate HTML archives:**
-   ```bash
-   ssh ALIAS MAILMAN_BIN/arch --wipe DESTLIST
-   ```
-9. **Verify member counts match:**
-   ```bash
-   ssh ALIAS MAILMAN_BIN/list_members SRCLIST | wc -l
-   ssh ALIAS MAILMAN_BIN/list_members DESTLIST | wc -l
+   ssh ALIAS "echo 'SOURCE:' && MAILMAN_BIN/list_members SRCLIST | wc -l && echo 'DEST:' && MAILMAN_BIN/list_members DESTLIST | wc -l"
    ```
 
 ### rename_list — Rename a List (Duplicate + Delete Original)
 
-Same as `duplicate_list` (steps 1–9 above), plus:
+Same as `duplicate_list` (steps 1–6 above), plus:
 
-10. **Delete original list** (only after verification succeeds):
+7. **Delete original list** (only after verification succeeds):
     ```bash
     ssh ALIAS sudo MAILMAN_BIN/rmlist SRCLIST
     ```
@@ -299,6 +286,39 @@ Same as `duplicate_list` (steps 1–9 above), plus:
 **Note:** Archives of the old list are preserved on disk unless `--archives` is passed to `rmlist`. It is recommended to leave old archives in place as a safety net.
 
 **Known limitation:** Per-member settings (individual nomail, moderation flags) stored in the list pickle are NOT preserved by `config_list` export/import. These must be re-applied manually after the rename if needed.
+
+## SSH Connection Optimization
+
+**IMPORTANT:** Minimize the number of SSH connections to avoid being rate-limited or blocked by the server. Batch multiple commands into a single SSH session wherever possible.
+
+### Batching Principles
+
+1. **Chain independent commands** with `&&` inside a quoted SSH command:
+   ```bash
+   ssh ALIAS "MAILMAN_BIN/cmd1 ARGS && MAILMAN_BIN/cmd2 ARGS"
+   ```
+
+2. **Pipe dependent commands** inside a single SSH session:
+   ```bash
+   ssh ALIAS "MAILMAN_BIN/list_members SRCLIST | MAILMAN_BIN/add_members -r - DESTLIST"
+   ```
+
+3. **Combine pipes and chains** for complex operations:
+   ```bash
+   ssh ALIAS "MAILMAN_BIN/cmd1 | MAILMAN_BIN/cmd2 && MAILMAN_BIN/cmd3 | MAILMAN_BIN/cmd4"
+   ```
+
+4. **Mix sudo and non-sudo** commands in one session:
+   ```bash
+   ssh ALIAS "sudo cmd1 && cmd2"
+   ```
+
+5. **Batch Python member setting changes** — modify multiple members or multiple settings in a single `python -c` script rather than one SSH call per change.
+
+### When Separate Connections Are Needed
+
+- When a step requires user confirmation before the next step
+- When you need to inspect output before deciding the next action
 
 ## Safety Rules
 

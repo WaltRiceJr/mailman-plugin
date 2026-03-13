@@ -57,6 +57,8 @@ When the user mentions a list:
 
 Build and run the appropriate SSH command using the mailman2-cli skill for correct syntax.
 
+**SSH Connection Optimization:** Minimize SSH connections by batching commands. Too many separate SSH connections can cause the server to refuse connections. Chain commands with `&&` and use pipes inside quoted SSH commands (e.g., `ssh ALIAS "cmd1 && cmd2 | cmd3"`). Refer to the "SSH Connection Optimization" section in the skill for patterns.
+
 **For destructive operations (remove, sync):**
 1. Show exactly what will happen (who will be removed/added)
 2. Use AskUserQuestion to get explicit confirmation
@@ -77,22 +79,20 @@ Build and run the appropriate SSH command using the mailman2-cli skill for corre
 2. Ask the user for the admin email, a temporary password, and the email domain for the new list (use `default_domain` from config as default, confirm with user)
 3. Show a summary: source list, destination name, admin email, domain. Warn that per-member settings (individual nomail flags, per-member moderation) are NOT preserved and must be re-applied manually if needed
 4. Use AskUserQuestion to confirm before proceeding
-5. Execute the full `duplicate_list` procedure from the skill reference:
-   - Create new list via `newlist -q` with `--urlhost=DOMAIN` to set the list's web host and `--emailhost=DOMAIN` to set the list's email domain
+5. Execute the full `duplicate_list` procedure from the skill reference, using batched SSH connections:
+   - Create new list via `newlist -q` with `--urlhost=DOMAIN` and `--emailhost=DOMAIN`
    - Add aliases to `/etc/aliases` and run `sudo newaliases`
-   - Export source config via `config_list -o`, import into destination via `config_list -i`
-   - Copy regular members (`list_members --regular SRC | add_members -r - DEST`)
-   - Copy digest members (`list_members --digest SRC | add_members -d - DEST`)
-   - Copy archive mbox from `/var/lib/mailman/archives/private/SRCLIST.mbox/SRCLIST.mbox` to `/var/lib/mailman/archives/private/DESTLIST.mbox/DESTLIST.mbox`
-   - Regenerate HTML archives via `arch --wipe DESTLIST`
-   - Verify member counts match between source and destination
+   - Export and import config in one connection (`config_list -o && config_list -i`)
+   - Copy regular and digest members in one connection (`list_members --regular | add_members && list_members --digest | add_members`)
+   - Copy archive mbox and regenerate HTML archives in one connection (`sudo cp ... && arch --wipe`)
+   - Verify member counts in one connection
 
 **For rename operations:**
 1. Verify the destination list does not already exist (run `list_lists -b` and check)
 2. Ask the user for the admin email, a temporary password, and the email domain for the new list (use `default_domain` from config as default, confirm with user)
 3. Show a summary: source list, destination name, admin email, domain. Warn that the original list will be deleted and that per-member settings (individual nomail flags, per-member moderation) are NOT preserved
 4. Use AskUserQuestion with an explicit YES confirmation — this is highly destructive
-5. Execute the full `duplicate_list` procedure (steps above)
+5. Execute the full `duplicate_list` procedure (batched steps above)
 6. After verification succeeds (member counts match), delete the original list via `rmlist` (without `--archives` to preserve old archives as a safety net)
 7. Confirm deletion succeeded and show final status
 
